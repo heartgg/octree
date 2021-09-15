@@ -9,4 +9,4 @@ C++ octree for point-cloud downsampling
 ## Downsampled Cloud
 ~80,000 points
 
-![Downsampled](https://i.imgur.com/NmFGRDI.png)
+![Downsampled](https://i.imgur.com/HNxJkvm.png)

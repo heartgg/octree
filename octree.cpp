@@ -1,227 +1,201 @@
 #include <iostream>
-#include <vector>
-#include <math.h>
 #include <fstream>
+#include <vector>
 #include <sstream>
 #include <iomanip>
 
-#define TopLeftBack 0
-#define TopRightBack 1
-#define TopRightFront 2
-#define TopLeftFront 3
-#define BottomLeftBack 4
-#define BottomRightBack 5
-#define BottomRightFront 6
-#define BottomLeftFront 7
-
-struct Point {
-    double x;
-    double y;
-    double z;
-    int type = 0;
-    Point() { type = 1; }
-    Point(double a, double b, double c) {
-        x = a, y = b, z = c;
-    }
+enum NodeType {
+    EMPTY,
+    ONODE, // leaf
+    INODE // branch node
 };
 
-struct Boundary {
-    double x;
-    double y;
-    double z;
-    Boundary() {}
-    Boundary(int point[]) {
-        x = point[0], y = point[1], z = point[2];
+enum RelativeLocation {
+    GREATER_X = 1,
+    GREATER_Y = 2,
+    GREATER_Z = 4
+};
+
+struct Point {
+    double x, y, z;
+
+    Point () {
+        x = 0, y = 0, z = 0;
     }
-    Boundary(double a, double b, double c) {
-        x = a, y = b, z = c;
+    Point (double pX, double pY, double pZ) {
+        x = pX, y = pY, z = pZ;
     }
 };
 
 class Octree {
+    // boundaries that define the octree prism, opposite corners
+    private:
+        NodeType type = EMPTY; // Tree type
+        Point bLbBoundary, tRfBoundary, midpoint;
+        Point* firstPoint = nullptr; // Representative point for subsampling
+        Octree* nodes = nullptr;
 
-    Point point;
-    Boundary topRightFront, bottomLeftBack;
-    std::vector<Octree> nodes;
-    
     public:
-        Octree(Boundary bLb, Boundary tRf) {
-
-            point = Point();
-            point.type = 2;
-            bottomLeftBack = bLb;
-            topRightFront = tRf;
-
-            nodes.assign(8, Octree());
-        }
-
-        Octree(Point coords) {
-            point = coords;
-        }
-
         Octree() {
-            point = Point();
+            type = EMPTY;
         }
 
-        void insert (Point coords) {
-            if (outOfBounds(coords))
-            {
-                std::cout << "Error: Coordinates out of bounds." << std::endl;
-                return;
-            }
+        Octree(Point* coord) {
+            firstPoint = coord;
+            type = ONODE;
+        }
 
-            double midX = (topRightFront.x + bottomLeftBack.x) / 2;
-            double midY = (topRightFront.y + bottomLeftBack.y) / 2;
-            double midZ = (topRightFront.z + bottomLeftBack.z) / 2;
+        Octree(Point bLb, Point tRf) {
+            bLbBoundary = bLb;
+            tRfBoundary = tRf;
+            midpoint = calcMidpoint(bLbBoundary, tRfBoundary);
+            nodes = new Octree[8];
+            type = INODE;
+        }
 
-            int position = 1;
+        // Inserts a point into the octree
+        // by figuring out which octant to go into
+        // and then recursively running the function
+        // until an empty spot is found
+        void insert(Point *coord) {
+            if (outOfBounds(coord)) return;
 
-            if (coords.x > midX) position *= 3;
-            if (coords.y > midY) position *= 7;
-            if (coords.z > midZ) position *= 11;
+            Point tRf, bLb;
+            int position = 0;
+            if (coord->x > midpoint.x) position |= GREATER_X;
+            if (coord->y > midpoint.y) position |= GREATER_Y;
+            if (coord->z > midpoint.z) position |= GREATER_Z;
 
-            int location;
-            Boundary tRf;
-            Boundary bLb;
-
-            switch (position)
-            {
-            case 1: // BottomLeftBack
-                location = BottomLeftBack;
-                tRf = Boundary(midX, midY, midZ);
-                bLb = Boundary(bottomLeftBack.x, bottomLeftBack.y, bottomLeftBack.z);
+            switch (position) {
+            case 0: // 000 BottomLeftBack
+                tRf = midpoint;
+                bLb = bLbBoundary;
                 break;
-            case 11: // TopLeftBack
-                location = TopLeftBack;
-                tRf = Boundary(midX, midY, topRightFront.z);
-                bLb = Boundary(bottomLeftBack.x, bottomLeftBack.y, midZ); 
+            case 1: // 001 BottomLeftFront
+                tRf = Point(tRfBoundary.x, midpoint.y, midpoint.z);
+                bLb = Point(midpoint.x, bLbBoundary.y, bLbBoundary.z); 
                 break;
-            case 7: // BottomRightBack
-                location = BottomRightBack;
-                tRf = Boundary(midX, topRightFront.y, midZ);
-                bLb = Boundary(bottomLeftBack.x, midY, bottomLeftBack.z); 
+            case 2: // 010 BottomRightBack
+                tRf = Point(midpoint.x, tRfBoundary.y, midpoint.z);
+                bLb = Point(bLbBoundary.x, midpoint.y, bLbBoundary.z); 
                 break;
-            case 3: // BottomLeftFront
-                location = BottomLeftFront;
-                tRf = Boundary(topRightFront.x, midY, midZ);
-                bLb = Boundary(midX, bottomLeftBack.y, bottomLeftBack.z); 
+            case 3: // 011 BottomRightFront
+                tRf = Point(tRfBoundary.x, tRfBoundary.y, midpoint.z);
+                bLb = Point(midpoint.x, midpoint.y, bLbBoundary.z); 
                 break;
-            case 33: // TopLeftFront
-                location = TopLeftFront;
-                tRf = Boundary(topRightFront.x, midY, topRightFront.z);
-                bLb = Boundary(midX, bottomLeftBack.y, midZ);
+            case 4: // 100 TopLeftBack
+                tRf = Point(midpoint.x, midpoint.y, tRfBoundary.z);
+                bLb = Point(bLbBoundary.x, bLbBoundary.y, midpoint.z);
                 break;
-            case 21: // BottomRightFront
-                location = BottomRightFront;
-                tRf = Boundary(topRightFront.x, topRightFront.y, midZ);
-                bLb = Boundary(midX, midY, bottomLeftBack.z); 
+            case 5: // 101 TopLeftFront
+                tRf = Point(tRfBoundary.x, midpoint.y, tRfBoundary.z);
+                bLb = Point(midpoint.x, bLbBoundary.y, midpoint.z);
                 break;
-            case 77: // TopRightBack
-                location = TopRightBack;
-                tRf = Boundary(midX, topRightFront.y, topRightFront.z);
-                bLb = Boundary(bottomLeftBack.x, midY, midZ); 
+            case 6: // 110 TopRightBack
+                tRf = Point(midpoint.x, tRfBoundary.y, tRfBoundary.z);
+                bLb = Point(bLbBoundary.x, midpoint.y, midpoint.z); 
                 break;
-            case 231: // TopRightFront
-                location = TopRightFront;
-                tRf = Boundary(topRightFront.x, topRightFront.y, topRightFront.z); 
-                bLb = Boundary(midX, midY, midZ);
+            case 7: // 111 TopRightFront
+                tRf = tRfBoundary; 
+                bLb = midpoint;
                 break;
             }
 
-            if (nodes[location].point.type == 1) 
-                nodes[location] = Octree(coords);
-            else if (nodes[location].point.type == 0) 
-            {
-                Point holder = nodes[location].point;
-                nodes[location] = Octree(bLb,tRf);
-                nodes[location].insert(holder);
-                nodes[location].insert(coords);
+            if (nodes[position].type == EMPTY) {
+                nodes[position] = Octree(coord);
+            // This converts an ONODE into an INODE
+            } else if (nodes[position].type == ONODE) {
+                Point* placeholder = nodes[position].firstPoint;
+                nodes[position] = Octree(bLb, tRf);
+                nodes[position].firstPoint = placeholder;
+                nodes[position].insert(placeholder);
+                nodes[position].insert(coord);
+            } else {
+                nodes[position].insert(coord);
             }
-            else 
-                nodes[location].insert(coords);
-
         }
 
-        bool outOfBounds (Point coords) {
-            return coords.x > topRightFront.x 
-            || coords.y > topRightFront.y
-            || coords.z > topRightFront.z
-            || coords.x < bottomLeftBack.x
-            || coords.y < bottomLeftBack.y
-            || coords.z < bottomLeftBack.z;
+        // Returns a Point thats a midpoint between two Points
+        Point calcMidpoint(Point bLb, Point tRf) {
+            double midX = (tRf.x + bLb.x) / 2;
+            double midY = (tRf.y + bLb.y) / 2;
+            double midZ = (tRf.z + bLb.z) / 2;
+            return Point(midX, midY, midZ);
         }
 
-        void subsample (int depth, std::vector<Point>& subsampled) {
-            for (size_t i = 0; i < nodes.size(); i++)
-            {
-                if (nodes[i].point.type == 0) 
-                    subsampled.push_back(nodes[i].point);
-                else if (nodes[i].point.type == 2)
-                    if (depth > 0)
-                        nodes[i].subsample(depth--, subsampled);
-                    else if (nodes[i].point.x != 0) 
-                        subsampled.push_back(nodes[i].point);
+        // Checks if a Point is outside the Octrees boundaries
+        bool outOfBounds (Point *coords) {
+            return coords->x > tRfBoundary.x 
+            || coords->y > tRfBoundary.y
+            || coords->z > tRfBoundary.z
+            || coords->x < bLbBoundary.x
+            || coords->y < bLbBoundary.y
+            || coords->z < bLbBoundary.z;
+        }
+
+        // For every node in the octree,
+        // if the node is a leaf, read the coordinate into the vector
+        // if the node is a branch, subsample recursively or read the
+        // representative point (firstPoint) if the depth has been reached
+        void subsample (int depth, std::vector<Point*>& subsampled) {
+            int passedDepth = --depth;
+            for (int i = 0; i < 8; i++) {
+                if (nodes[i].type == ONODE) {
+                    subsampled.push_back(nodes[i].firstPoint);
+                } else if (nodes[i].type == INODE) {
+                    if (passedDepth > 0) {
+                        nodes[i].subsample(passedDepth, subsampled);
+                    } else {
+                        subsampled.push_back(nodes[i].firstPoint);
+                    }
+                }
             }
         }
 };
 
 int main () {
-    
-    int depth = 16;
-    std::vector<Point> points;
-    std::vector<Point> subsampled;
-
-    int maxPoint[3] = {0};
-    int minPoint[3] = {0};
-
     std::fstream file;
-    std::vector<double> point;
     file.open("input.csv");
 
     std::string line,coord,temp;
+    std::vector<Point> array;
     
+    // Read all of the CSV coordinate points into a Point vector
     while (file.good()) {
-        point.clear();
         std::getline(file, line);
         std::stringstream ss(line);
 
-        if (line == "x,y,z") continue;
+        if (line == "x,y,z" || line == "") continue;
 
-        while (ss.good())
+        double placeholder[3];
+        for (int i = 0; i < 3; i++)
         {
             std::getline(ss, coord, ',');
-            point.push_back(std::stod(coord));
+            placeholder[i] = std::stod(coord);
         }
         
-        for (size_t i = 0; i < point.size(); i++)
-        {
-            if (point[i] > maxPoint[i]) maxPoint[i] = std::ceil(point[i]);
-            else if (point[i] < minPoint[i]) minPoint[i] = std::floor(point[i]);
-        }
-
-        Point coordinate(point[0], point[1], point[2]);
-        points.push_back(coordinate);
+        array.push_back(Point(placeholder[0], placeholder[1], placeholder[2]));
     }
-
     file.close();
-
-    Boundary minCorner(minPoint);
-    Boundary maxCorner(maxPoint);
-
-    Octree tree(minCorner, maxCorner);
-
-    for (Point coordinate : points) {
-        tree.insert(coordinate);
+    
+    // Create the root octree
+    Octree root = Octree(Point(-10, -10, -10), Point(10, 10, 10));
+    
+    // Insert each Point from the root down
+    for (int i = 0; i < array.size(); i++) {
+        root.insert(&array.at(i));
     }
 
-    tree.subsample(depth, subsampled);
-
+    // Downsample the Points into the Point* vector
+    std::vector<Point*> subsampled;
+    root.subsample(10, subsampled);
+    
     file.open("output.csv", std::ofstream::out | std::ofstream::trunc);
     file << "x,y,z\n";
 
-    for (size_t i = 0; i < subsampled.size(); i++)
-    {
-        file << std::fixed << std::setprecision(5) << subsampled[i].x << ',' << subsampled[i].y << ',' << subsampled[i].z << "\n";
+    // Write every subsampled point into the output file
+    for (int i = 0; i < subsampled.size(); i++) {
+        file << std::fixed << std::setprecision(6) << subsampled.at(i)->x << ',' << subsampled.at(i)->y << ',' << subsampled.at(i)->z << "\n";
     }
 
     file.close();

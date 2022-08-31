@@ -10,7 +10,3 @@ C++ octree for point-cloud downsampling
 ~80,000 points
 
 ![Downsampled](https://i.imgur.com/HNxJkvm.png)
-
-## Notes
-* Use enums and bitwise
-* Boundary => Point

@@ -154,6 +154,7 @@ class Octree {
 };
 
 int main () {
+    const int DEPTH = 10; // for recursive subsampling
     std::fstream file;
     file.open("input.csv");
 
@@ -188,7 +189,7 @@ int main () {
 
     // Downsample the Points into the Point* vector
     std::vector<Point*> subsampled;
-    root.subsample(10, subsampled);
+    root.subsample(DEPTH, subsampled);
     
     file.open("output.csv", std::ofstream::out | std::ofstream::trunc);
     file << "x,y,z\n";
